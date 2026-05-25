@@ -1,0 +1,473 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>HTPT — Reliable MQTT Monitor</title>
+  <script src="/socket.io/socket.io.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: #0f172a;
+      color: #e2e8f0;
+      min-height: 100vh;
+      padding: 20px;
+    }
+    h1 { color: #38bdf8; margin-bottom: 4px; }
+    .subtitle { color: #94a3b8; margin-bottom: 20px; font-size: 14px; }
+
+    .conn-status {
+      display: inline-block;
+      padding: 4px 10px;
+      border-radius: 12px;
+      font-size: 12px;
+      font-weight: 600;
+      margin-left: 8px;
+    }
+    .conn-status.connected { background: #16a34a; color: white; }
+    .conn-status.disconnected { background: #dc2626; color: white; }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 16px;
+      margin-bottom: 16px;
+    }
+    .card {
+      background: #1e293b;
+      border: 1px solid #334155;
+      border-radius: 8px;
+      padding: 16px;
+    }
+    .card h2 {
+      font-size: 13px;
+      color: #94a3b8;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-bottom: 12px;
+      font-weight: 600;
+    }
+
+    .metric { display: flex; align-items: baseline; gap: 6px; }
+    .metric .value { font-size: 32px; font-weight: 700; color: #f1f5f9; }
+    .metric .unit  { font-size: 14px; color: #94a3b8; }
+
+    .stat-row { display: flex; justify-content: space-between; padding: 6px 0; border-bottom: 1px dashed #334155; }
+    .stat-row:last-child { border-bottom: none; }
+    .stat-label { color: #94a3b8; font-size: 13px; }
+    .stat-value { color: #f1f5f9; font-weight: 600; font-family: "SF Mono", Menlo, monospace; }
+    .stat-value.bad { color: #f87171; }
+    .stat-value.warn { color: #fbbf24; }
+    .stat-value.good { color: #4ade80; }
+
+    .control-group { margin-bottom: 14px; }
+    .control-group label {
+      display: flex; justify-content: space-between;
+      font-size: 13px; color: #cbd5e1; margin-bottom: 6px;
+    }
+    .control-group label .val { color: #38bdf8; font-family: monospace; font-weight: 600; }
+    .control-group input[type=range] {
+      width: 100%; height: 6px; border-radius: 3px;
+      background: #0f172a; appearance: none;
+      outline: none; cursor: pointer;
+    }
+    .control-group input[type=range]::-webkit-slider-thumb {
+      appearance: none;
+      width: 18px; height: 18px; border-radius: 50%;
+      background: #38bdf8; cursor: pointer;
+      border: 2px solid #1e293b;
+    }
+    .control-group input[type=range]::-moz-range-thumb {
+      width: 18px; height: 18px; border-radius: 50%;
+      background: #38bdf8; cursor: pointer; border: 2px solid #1e293b;
+    }
+
+    .led-row { display: flex; gap: 12px; margin-top: 8px; }
+    .led {
+      flex: 1; padding: 8px; border-radius: 6px;
+      text-align: center; font-size: 11px;
+      background: #0f172a; border: 1px solid #334155;
+      transition: all 0.2s;
+    }
+    .led.on.green  { background: #16a34a; color: white; box-shadow: 0 0 12px #16a34a; }
+    .led.on.yellow { background: #ca8a04; color: white; box-shadow: 0 0 12px #ca8a04; }
+    .led.on.red    { background: #dc2626; color: white; box-shadow: 0 0 12px #dc2626; }
+    .led.on.main   { background: #f1f5f9; color: #0f172a; box-shadow: 0 0 12px #f1f5f9; }
+
+    .log {
+      background: #020617;
+      border: 1px solid #334155;
+      border-radius: 6px;
+      padding: 10px;
+      max-height: 320px;
+      overflow-y: auto;
+      font-family: "SF Mono", Menlo, monospace;
+      font-size: 11px;
+      line-height: 1.5;
+    }
+    .log .line { padding: 2px 4px; border-radius: 2px; }
+    .log .line.ok        { color: #4ade80; }
+    .log .line.duplicate { color: #fbbf24; }
+    .log .line.ooo       { color: #f87171; }
+    .log .line.corrupt   { color: #f43f5e; }
+    .log .line.sent      { color: #38bdf8; }
+    .log .line.retry     { color: #fb923c; }
+    .log .line.failed    { color: #ef4444; font-weight: 700; }
+    .log .ts { color: #64748b; }
+
+    .gauge { position: relative; height: 160px; display: flex; align-items: center; justify-content: center; }
+    .gauge canvas { max-height: 160px; }
+    .gauge .center {
+      position: absolute; top: 60%; left: 0; right: 0;
+      text-align: center;
+    }
+    .gauge .center .num { font-size: 28px; font-weight: 700; color: #f1f5f9; }
+    .gauge .center .unit { font-size: 12px; color: #94a3b8; }
+
+    .footer { text-align: center; color: #475569; font-size: 11px; margin-top: 20px; }
+
+    button {
+      padding: 8px 12px; border-radius: 4px; border: none;
+      background: #475569; color: white; cursor: pointer; font-size: 13px;
+    }
+    button:hover { background: #64748b; }
+  </style>
+</head>
+<body>
+  <h1>HTPT — Reliable MQTT Monitor
+    <span id="conn-status" class="conn-status disconnected">DISCONNECTED</span>
+  </h1>
+  <div class="subtitle">Đồ án Hệ thống Phân tán — 2 ESP32 ↔ MQTT — qua server Node.js</div>
+
+  <div class="grid">
+    <div class="card">
+      <h2>Nhiệt độ (DHT11)</h2>
+      <div class="gauge">
+        <canvas id="gauge-temp"></canvas>
+        <div class="center"><div class="num" id="temp-val">--</div><div class="unit">°C</div></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Độ ẩm</h2>
+      <div class="gauge">
+        <canvas id="gauge-humid"></canvas>
+        <div class="center"><div class="num" id="humid-val">--</div><div class="unit">%</div></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Trạng thái LED ESP32_A (Sender)</h2>
+      <div class="metric">
+        <div class="value" id="last-seq-a">--</div>
+        <div class="unit">seq cuối</div>
+      </div>
+      <div class="led-row" style="margin-top: 16px;">
+        <div class="led green"  id="led-a-green">GREEN<br>ACK OK</div>
+        <div class="led yellow" id="led-a-yellow">YELLOW<br>RETRY</div>
+        <div class="led red"    id="led-a-red">RED<br>FAILED</div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Trạng thái LED ESP32_B (Receiver)</h2>
+      <div class="metric">
+        <div class="value" id="expected-seq">--</div>
+        <div class="unit">expected seq</div>
+      </div>
+      <div class="led-row" style="margin-top: 16px;">
+        <div class="led main"   id="led-b-main">MAIN<br>HOT</div>
+        <div class="led green"  id="led-b-green">GREEN<br>OK</div>
+        <div class="led yellow" id="led-b-yellow">YELLOW<br>DUP</div>
+        <div class="led red"    id="led-b-red">RED<br>OOO</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="grid">
+    <div class="card">
+      <h2>Thống kê ESP32_A (Sender)</h2>
+      <div class="stat-row"><span class="stat-label">Unique seq tạo</span><span class="stat-value" id="a-unique">0</span></div>
+      <div class="stat-row"><span class="stat-label">Sent total (kể cả retry)</span><span class="stat-value" id="a-sent">0</span></div>
+      <div class="stat-row"><span class="stat-label">Drop-sim (cố tình bỏ)</span><span class="stat-value warn" id="a-dropped">0</span></div>
+      <div class="stat-row"><span class="stat-label">Retries</span><span class="stat-value warn" id="a-retries">0</span></div>
+      <div class="stat-row"><span class="stat-label">ACK OK nhận được</span><span class="stat-value good" id="a-ack-ok">0</span></div>
+      <div class="stat-row"><span class="stat-label">Failed (mất hẳn)</span><span class="stat-value bad" id="a-failed">0</span></div>
+      <div class="stat-row"><span class="stat-label">Reliability</span><span class="stat-value good" id="a-reliability">--%</span></div>
+    </div>
+
+    <div class="card">
+      <h2>Thống kê ESP32_B (Receiver)</h2>
+      <div class="stat-row"><span class="stat-label">Received total</span><span class="stat-value" id="b-received">0</span></div>
+      <div class="stat-row"><span class="stat-label">OK processed</span><span class="stat-value good" id="b-ok">0</span></div>
+      <div class="stat-row"><span class="stat-label">Duplicate phát hiện</span><span class="stat-value warn" id="b-duplicate">0</span></div>
+      <div class="stat-row"><span class="stat-label">Out-of-order</span><span class="stat-value warn" id="b-ooo">0</span></div>
+      <div class="stat-row"><span class="stat-label">Corrupt (sai checksum)</span><span class="stat-value bad" id="b-corrupt">0</span></div>
+      <div class="stat-row"><span class="stat-label">ACK gửi</span><span class="stat-value" id="b-ack-sent">0</span></div>
+      <div class="stat-row"><span class="stat-label">ACK drop (giả lập)</span><span class="stat-value warn" id="b-ack-drop">0</span></div>
+    </div>
+
+    <div class="card">
+      <h2>Điều khiển demo</h2>
+      <div class="control-group">
+        <label>Drop rate ESP32_A (data) <span class="val" id="drop-rate-val">0.00</span></label>
+        <input type="range" id="drop-rate" min="0" max="1" step="0.05" value="0">
+      </div>
+      <div class="control-group">
+        <label>ACK drop rate ESP32_B <span class="val" id="ack-drop-rate-val">0.00</span></label>
+        <input type="range" id="ack-drop-rate" min="0" max="1" step="0.05" value="0">
+      </div>
+      <div class="control-group">
+        <label>Temp threshold (°C) <span class="val" id="threshold-val">30</span></label>
+        <input type="range" id="threshold" min="15" max="40" step="1" value="30">
+      </div>
+      <button id="reset-stats">Reset hiển thị</button>
+    </div>
+  </div>
+
+  <div class="grid" style="grid-template-columns: 2fr 1fr;">
+    <div class="card">
+      <h2>Sequence number theo thời gian</h2>
+      <canvas id="chart-seq" height="160"></canvas>
+    </div>
+    <div class="card">
+      <h2>Nhật ký sự kiện (40 gần nhất)</h2>
+      <div class="log" id="log-container"></div>
+    </div>
+  </div>
+
+  <div class="footer">
+    Web monitor Node.js • Server kết nối Mosquitto broker và đẩy data qua Socket.IO
+  </div>
+
+<script>
+//==============================================================
+// HTPT - Web Monitor (client)
+// Kết nối tới Node.js server qua Socket.IO
+// Server làm middleman với MQTT broker
+//==============================================================
+
+const socket = io();
+
+socket.on('connect',    () => addLog('sent', 'Socket.IO đã kết nối với server'));
+socket.on('disconnect', () => { setStatus(false); addLog('failed', 'Socket.IO mất kết nối'); });
+
+socket.on('mqtt-status', ({ connected, url }) => {
+  setStatus(connected);
+  if (connected) addLog('ok', `Server đã kết nối broker MQTT (${url})`);
+  else           addLog('failed', `Server mất kết nối broker MQTT`);
+});
+
+socket.on('mqtt-message', ({ topic, payload }) => {
+  handleMessage(topic, payload);
+});
+
+function setStatus(ok) {
+  const el = document.getElementById('conn-status');
+  el.textContent = ok ? 'CONNECTED' : 'DISCONNECTED';
+  el.className   = 'conn-status ' + (ok ? 'connected' : 'disconnected');
+}
+
+// ----- Handle each topic -----
+function handleMessage(topic, m) {
+  switch (topic) {
+    case 'monitor/stats/A':   updateStatsA(m); break;
+    case 'monitor/stats/B':   updateStatsB(m); break;
+    case 'monitor/processed': updateSensor(m); break;
+    case 'monitor/sent':
+      addLog('sent', `SENT seq=${m.seq} temp=${m.temp}`);
+      blink('led-a-green', 200);
+      pushChart('sent', m.seq);
+      break;
+    case 'monitor/retry':
+      addLog('retry', `RETRY seq=${m.seq} attempt=${m.retry}`);
+      blink('led-a-yellow', 250);
+      pushChart('retry', m.seq);
+      break;
+    case 'monitor/failed':
+      addLog('failed', `FAILED seq=${m.seq} (sau max retry)`);
+      blink('led-a-red', 2000);
+      pushChart('failed', m.seq);
+      break;
+    case 'monitor/received':
+      handleReceived(m);
+      break;
+    case 'sensor/ack':
+      addLog('ok', `ACK seq=${m.ack_seq} status=${m.status}`);
+      break;
+  }
+}
+
+function handleReceived(m) {
+  const cls = ({
+    OK: 'ok', DUPLICATE_OLD: 'duplicate', DUPLICATE_BUF: 'duplicate',
+    OUT_OF_ORDER: 'ooo', CORRUPT: 'corrupt'
+  })[m.status] || 'ok';
+  addLog(cls, `RECV seq=${m.seq} expected=${m.expected} status=${m.status}`);
+  pushChart(m.status, m.seq);
+
+  if (m.status === 'OK') blink('led-b-green', 200);
+  else if (m.status === 'DUPLICATE_OLD' || m.status === 'DUPLICATE_BUF') blink('led-b-yellow', 300);
+  else if (m.status === 'OUT_OF_ORDER') blink('led-b-red', 300);
+  else if (m.status === 'CORRUPT') blink('led-b-red', 500);
+}
+
+function updateStatsA(s) {
+  setText('a-unique',  s.unique_seq);
+  setText('a-sent',    s.sent_total);
+  setText('a-dropped', s.dropped);
+  setText('a-retries', s.retries);
+  setText('a-ack-ok',  s.ack_ok);
+  setText('a-failed',  s.failed);
+  setText('last-seq-a', s.unique_seq);
+
+  if (s.unique_seq > 0) {
+    const rel = (s.ack_ok / s.unique_seq * 100).toFixed(1);
+    setText('a-reliability', rel + '%');
+    document.getElementById('a-reliability').className =
+      'stat-value ' + (rel > 95 ? 'good' : (rel > 70 ? 'warn' : 'bad'));
+  }
+}
+
+function updateStatsB(s) {
+  setText('b-received',  s.received_total);
+  setText('b-ok',        s.ok);
+  setText('b-duplicate', s.duplicate);
+  setText('b-ooo',       s.out_of_order);
+  setText('b-corrupt',   s.corrupt);
+  setText('b-ack-sent',  s.ack_sent);
+  setText('b-ack-drop',  s.ack_dropped);
+  setText('expected-seq',s.expected_seq);
+}
+
+function updateSensor(m) {
+  setText('temp-val',  Number(m.temp).toFixed(1));
+  setText('humid-val', Number(m.humid).toFixed(1));
+  updateGauge(gaugeTemp,  m.temp);
+  updateGauge(gaugeHumid, m.humid);
+  if (m.led_main === 'ON') document.getElementById('led-b-main').classList.add('on');
+  else                     document.getElementById('led-b-main').classList.remove('on');
+}
+
+function setText(id, v) {
+  const el = document.getElementById(id);
+  if (el) el.textContent = (v ?? '--');
+}
+
+function blink(id, dur) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.classList.add('on');
+  setTimeout(() => el.classList.remove('on'), dur);
+}
+
+// ----- Log buffer -----
+const logBox   = document.getElementById('log-container');
+const logLines = [];
+function addLog(cls, text) {
+  const ts = new Date().toLocaleTimeString();
+  logLines.unshift({ ts, cls, text });
+  if (logLines.length > 40) logLines.pop();
+  logBox.innerHTML = logLines
+    .map(l => `<div class="line ${l.cls}"><span class="ts">[${l.ts}]</span> ${escapeHtml(l.text)}</div>`)
+    .join('');
+}
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, c => (
+    { '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]
+  ));
+}
+
+// ----- Gauges (mini doughnut) -----
+function makeGauge(canvasId, max, color) {
+  const ctx = document.getElementById(canvasId).getContext('2d');
+  return new Chart(ctx, {
+    type: 'doughnut',
+    data: { datasets: [{
+      data: [0, max],
+      backgroundColor: [color, '#334155'],
+      borderWidth: 0
+    }]},
+    options: {
+      cutout: '70%',
+      circumference: 270,
+      rotation: -135,
+      plugins: { legend: { display: false }, tooltip: { enabled: false } },
+      animation: { duration: 300 }
+    }
+  });
+}
+const gaugeTemp  = makeGauge('gauge-temp',  50,  '#38bdf8');
+const gaugeHumid = makeGauge('gauge-humid', 100, '#22d3ee');
+function updateGauge(g, val) {
+  const max = g.data.datasets[0].data[0] + g.data.datasets[0].data[1];
+  const clamped = Math.max(0, Math.min(val, max));
+  g.data.datasets[0].data = [clamped, max - clamped];
+  g.update();
+}
+
+// ----- Sequence chart -----
+const seqCtx = document.getElementById('chart-seq').getContext('2d');
+const seqData = {
+  datasets: [
+    { label: 'SENT',          data: [], borderColor: '#38bdf8', backgroundColor:'#38bdf8', pointRadius:3, showLine:false },
+    { label: 'RETRY',         data: [], borderColor: '#fb923c', backgroundColor:'#fb923c', pointRadius:3, showLine:false },
+    { label: 'OK',            data: [], borderColor: '#4ade80', backgroundColor:'#4ade80', pointRadius:3, showLine:false },
+    { label: 'DUPLICATE_OLD', data: [], borderColor: '#fbbf24', backgroundColor:'#fbbf24', pointRadius:3, showLine:false },
+    { label: 'DUPLICATE_BUF', data: [], borderColor: '#facc15', backgroundColor:'#facc15', pointRadius:3, showLine:false },
+    { label: 'OUT_OF_ORDER',  data: [], borderColor: '#f87171', backgroundColor:'#f87171', pointRadius:3, showLine:false },
+    { label: 'FAILED',        data: [], borderColor: '#ef4444', backgroundColor:'#ef4444', pointRadius:4, showLine:false },
+    { label: 'CORRUPT',       data: [], borderColor: '#f43f5e', backgroundColor:'#f43f5e', pointRadius:4, showLine:false },
+  ]
+};
+const seqChart = new Chart(seqCtx, {
+  type: 'scatter',
+  data: seqData,
+  options: {
+    animation: false,
+    responsive: true,
+    plugins: {
+      legend: { labels: { color: '#cbd5e1', font: { size: 10 } } }
+    },
+    scales: {
+      x: { type: 'linear', title: { display: true, text: 'thời gian (s)', color: '#94a3b8' }, ticks: { color: '#94a3b8' }, grid: { color: '#1e293b' }},
+      y: { title: { display: true, text: 'sequence number', color: '#94a3b8' }, ticks: { color: '#94a3b8' }, grid: { color: '#1e293b' }}
+    }
+  }
+});
+const t0 = Date.now();
+function pushChart(label, seq) {
+  const ds = seqData.datasets.find(d => d.label === label);
+  if (!ds) return;
+  const t = (Date.now() - t0) / 1000;
+  ds.data.push({ x: t, y: seq });
+  if (ds.data.length > 300) ds.data.shift();
+  seqChart.update('none');
+}
+
+// ----- Control sliders -> server -> MQTT -----
+function bindSlider(id, topic, valId, formatter = v => v) {
+  const slider = document.getElementById(id);
+  const valEl  = document.getElementById(valId);
+  slider.addEventListener('input', () => {
+    const v = slider.value;
+    valEl.textContent = formatter(v);
+    socket.emit('mqtt-publish', { topic, payload: v });
+  });
+}
+bindSlider('drop-rate',     'control/drop_rate',     'drop-rate-val',     v => Number(v).toFixed(2));
+bindSlider('ack-drop-rate', 'control/ack_drop_rate', 'ack-drop-rate-val', v => Number(v).toFixed(2));
+bindSlider('threshold',     'control/threshold',     'threshold-val',     v => v);
+
+document.getElementById('reset-stats').addEventListener('click', () => {
+  logLines.length = 0;
+  logBox.innerHTML = '';
+  seqData.datasets.forEach(d => d.data = []);
+  seqChart.update();
+  addLog('sent', 'Đã reset hiển thị (counters trên ESP32 không reset)');
+});
+</script>
+</body>
+</html>

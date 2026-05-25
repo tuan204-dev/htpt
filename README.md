@@ -35,8 +35,13 @@ htpt/
 │   └── esp32_b_receiver.ino          ← code nạp cho ESP32_B
 ├── broker/
 │   └── mosquitto.conf                ← cấu hình Mosquitto
+├── web/
+│   ├── server.js                     ← Node.js Express + Socket.IO + mqtt.js
+│   ├── package.json
+│   ├── public/index.html             ← UI (Chart.js + Socket.IO client)
+│   └── README.md                     ← hướng dẫn riêng cho web
 ├── nodered/
-│   └── flow.json                     ← Node-RED flow import sẵn
+│   └── flow.json                     ← Node-RED flow (tùy chọn thay thế)
 └── report/
     ├── theory.md                     ← phần lý thuyết cho báo cáo
     ├── sequence_diagrams.md          ← các sequence diagram
@@ -111,16 +116,24 @@ mosquitto -c mosquitto.conf -v
 ```
 Để mặc định, broker lắng nghe port **1883** (cho MQTT) và **9001** (cho WebSocket).
 
-#### Cài Node-RED
+#### Chạy Web Monitor (Node.js — khuyến nghị)
+```bash
+cd web
+npm install
+npm start
+```
+Mở trình duyệt: **http://localhost:3000**
+
+Web tự kết nối broker MQTT, hiển thị real-time gauges, counters, biểu đồ sequence number, log sự kiện, và slider điều khiển. Xem chi tiết tại [web/README.md](web/README.md).
+
+#### (Tùy chọn) Cài Node-RED
+Nếu bạn muốn dùng Node-RED thay vì web Node.js tự viết:
 ```bash
 npm install -g --unsafe-perm node-red node-red-dashboard
 node-red
 ```
-Mở trình duyệt:
-- Editor: `http://localhost:1880`
-- Dashboard: `http://localhost:1880/ui`
-
-**Import flow**: trong editor → menu (☰) → Import → chọn file `nodered/flow.json` → Deploy.
+Mở `http://localhost:1880` (editor) → menu (☰) → Import → chọn `nodered/flow.json` → Deploy.
+Dashboard tại `http://localhost:1880/ui`.
 
 #### Lấy IP của laptop (để ESP32 kết nối broker)
 - **macOS / Linux**: `ifconfig | grep "inet "` (chọn IP của Wi-Fi adapter, thường bắt đầu bằng `192.168.x.x`)
