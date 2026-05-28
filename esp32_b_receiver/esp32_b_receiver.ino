@@ -36,6 +36,8 @@ const char*    WIFI_PASS   = "YOUR_WIFI_PASSWORD";
 const char*    MQTT_BROKER = "192.168.1.100";   // IP laptop chạy Mosquitto
 const uint16_t MQTT_PORT   = 1883;
 const char*    CLIENT_ID   = "ESP32_B_Receiver";
+const char*    MQTT_USER   = "esp32_b";          // khớp với .env trong docker/
+const char*    MQTT_PASS   = "esp32b_pass_2026";
 
 // ===================== CHÂN PHẦN CỨNG =====================
 #define LED_MAIN_PIN    14   // Actuator chính - bật khi nóng
@@ -309,7 +311,7 @@ void mqtt_callback(char* topic, byte* payload, unsigned int length) {
 void connect_mqtt() {
   while (!mqtt.connected()) {
     Serial.printf("[MQTT] Connecting to %s:%u ... ", MQTT_BROKER, MQTT_PORT);
-    if (mqtt.connect(CLIENT_ID)) {
+    if (mqtt.connect(CLIENT_ID, MQTT_USER, MQTT_PASS)) {
       Serial.println("OK");
       mqtt.subscribe(T_DATA,           0);
       mqtt.subscribe(T_CTL_THRESHOLD,  0);

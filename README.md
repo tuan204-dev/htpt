@@ -34,7 +34,11 @@ htpt/
 ├── esp32_b_receiver/
 │   └── esp32_b_receiver.ino          ← code nạp cho ESP32_B
 ├── broker/
-│   └── mosquitto.conf                ← cấu hình Mosquitto
+│   └── mosquitto.conf                ← cấu hình Mosquitto chạy native
+├── docker/
+│   ├── docker-compose.yml            ← Mosquitto qua Docker (khuyến nghị)
+│   ├── mosquitto.conf
+│   └── README.md
 ├── web/
 │   ├── server.js                     ← Node.js Express + Socket.IO + mqtt.js
 │   ├── package.json
@@ -103,18 +107,31 @@ DHT11:  VCC → 3V3, GND → GND, DATA → GPIO 4 (kèm pull-up 10kΩ)
 
 ### 4.1. Trên laptop (Mac/Windows/Linux)
 
-#### Cài Mosquitto
-- **macOS**: `brew install mosquitto`
-- **Windows**: tải installer từ https://mosquitto.org/download/
-- **Ubuntu**: `sudo apt install mosquitto mosquitto-clients`
+#### Chạy Mosquitto (chọn 1 trong 2 cách)
 
-Chạy với file config của dự án:
+**Cách A — qua Docker (khuyến nghị, sạch và portable, có auth):**
+```bash
+cd docker
+cp .env.example .env       # (lần đầu) tạo credentials
+./setup-auth.sh            # (lần đầu) sinh mosquitto.passwd
+docker compose up -d
+docker compose logs -f     # xem log
+```
+Broker có sẵn 4 user: `esp32_a`, `esp32_b`, `webserver`, `admin` — password mặc định trong `.env.example`. Chi tiết: [docker/README.md](docker/README.md).
+
+**Cách B — cài native lên máy:**
+- macOS: `brew install mosquitto`
+- Windows: tải installer từ https://mosquitto.org/download/
+- Ubuntu: `sudo apt install mosquitto mosquitto-clients`
+
+Chạy:
 ```bash
 cd broker
 mkdir -p mosquitto_data
 mosquitto -c mosquitto.conf -v
 ```
-Để mặc định, broker lắng nghe port **1883** (cho MQTT) và **9001** (cho WebSocket).
+
+Cả 2 cách đều lắng nghe port **1883** (MQTT) và **9001** (WebSocket).
 
 #### Chạy Web Monitor (Node.js — khuyến nghị)
 ```bash

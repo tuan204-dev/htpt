@@ -1,0 +1,43 @@
+# =====================================================================
+# Mosquitto ACL - quyền publish/subscribe theo user
+# Tham chiếu trong mosquitto.conf qua: acl_file /mosquitto/config/mosquitto.acl
+# =====================================================================
+# Cú pháp:
+#   user <username>
+#   topic write <topic>   - chỉ được publish
+#   topic read  <topic>   - chỉ được subscribe
+#   topic readwrite <topic>
+# Wildcards: + (một tầng), # (nhiều tầng, cuối topic)
+# =====================================================================
+
+# ----- ESP32_A (Sender) -----
+user esp32_a
+topic write sensor/data
+topic write monitor/sent
+topic write monitor/retry
+topic write monitor/failed
+topic write monitor/stats/A
+topic read  sensor/ack
+topic read  control/drop_rate
+
+# ----- ESP32_B (Receiver) -----
+user esp32_b
+topic write sensor/ack
+topic write monitor/received
+topic write monitor/processed
+topic write monitor/stats/B
+topic read  sensor/data
+topic read  control/threshold
+topic read  control/ack_drop_rate
+
+# ----- Web server Node.js -----
+user webserver
+topic read  sensor/#
+topic read  monitor/#
+topic write control/drop_rate
+topic write control/ack_drop_rate
+topic write control/threshold
+
+# ----- Admin (full access cho debug) -----
+user admin
+topic readwrite #

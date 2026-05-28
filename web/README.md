@@ -34,7 +34,14 @@ Tùy chọn:
 ```bash
 PORT=8080 npm start                              # đổi port web
 MQTT_URL=mqtt://192.168.1.50:1883 npm start      # broker máy khác
+MQTT_USER=webserver MQTT_PASS=mypass npm start   # nếu broker có auth (mặc định)
 ```
+
+**Auth mặc định** (khớp với `docker/.env.example`):
+- `MQTT_USER=webserver`
+- `MQTT_PASS=web_pass_2026`
+
+Nếu bạn đổi password trong `docker/.env` và chạy lại `setup-auth.sh`, nhớ truyền password mới qua biến môi trường khi khởi động web.
 
 Khi server khởi động, nó in ra mọi địa chỉ IP LAN có thể truy cập — copy URL đó để mở trên điện thoại / máy khác cùng mạng.
 

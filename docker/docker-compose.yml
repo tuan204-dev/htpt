@@ -1,0 +1,61 @@
+# =====================================================================
+# HTPT - Mosquitto MQTT Broker qua Docker Compose
+# =====================================================================
+# Trước khi chạy lần đầu:
+#   1. cp .env.example .env  (chỉnh password trong .env nếu muốn)
+#   2. ./setup-auth.sh        (sinh mosquitto.passwd)
+#   3. docker compose up -d   (khởi động)
+# =====================================================================
+
+services:
+  mosquitto:
+    image: eclipse-mosquitto:2.0
+    container_name: htpt-mosquitto
+    restart: unless-stopped
+    ports:
+      - "1883:1883"     # MQTT
+      - "9001:9001"     # WebSocket
+    volumes:
+      - ./mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
+      - ./mosquitto.passwd:/mosquitto/config/mosquitto.passwd:ro
+      - ./mosquitto.acl:/mosquitto/config/mosquitto.acl:ro
+      - mosquitto_data:/mosquitto/data
+      - mosquitto_log:/mosquitto/log
+    healthcheck:
+      test: ["CMD", "mosquitto_sub", "-h", "localhost", "-t", "$$SYS/broker/uptime",
+             "-u", "${MQTT_USER_ADMIN:-admin}", "-P", "${MQTT_PASS_ADMIN:-admin_pass_2026}",
+             "-C", "1", "-W", "3"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
+    networks:
+      - htpt-net
+
+  # ----- (tuỳ chọn) chạy luôn web Node.js trong cùng compose stack -----
+  # Bỏ comment để bật. Yêu cầu Dockerfile trong web/
+  #
+  # web:
+  #   build: ../web
+  #   container_name: htpt-web
+  #   restart: unless-stopped
+  #   ports:
+  #     - "3000:3000"
+  #   environment:
+  #     - MQTT_URL=mqtt://mosquitto:1883
+  #     - MQTT_USER=${MQTT_USER_WEB}
+  #     - MQTT_PASS=${MQTT_PASS_WEB}
+  #     - PORT=3000
+  #   depends_on:
+  #     mosquitto:
+  #       condition: service_healthy
+  #   networks:
+  #     - htpt-net
+
+volumes:
+  mosquitto_data:
+  mosquitto_log:
+
+networks:
+  htpt-net:
+    driver: bridge

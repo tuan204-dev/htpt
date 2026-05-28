@@ -57,6 +57,12 @@ broker/*.db
 broker/mosquitto.log
 mosquitto.pid
 
+# ----- Docker -----
+docker/.env
+docker/data/
+docker/log/
+docker/mosquitto.passwd   # file password đã hash - sinh từ .env, không commit
+
 # ----- Node-RED runtime -----
 nodered/.config.*
 nodered/.flows.json.backup

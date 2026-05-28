@@ -23,8 +23,10 @@ const { Server } = require('socket.io');
 const mqtt    = require('mqtt');
 
 // ----- Config (sửa qua biến môi trường) -----
-const PORT     = parseInt(process.env.PORT || '3000', 10);
-const MQTT_URL = process.env.MQTT_URL || 'mqtt://localhost:1883';
+const PORT      = parseInt(process.env.PORT || '8005', 10);
+const MQTT_URL  = process.env.MQTT_URL  || 'mqtt://localhost:1883';
+const MQTT_USER = process.env.MQTT_USER || 'webserver';
+const MQTT_PASS = process.env.MQTT_PASS || 'web_pass_2026';
 
 // Các topic cần forward về browser
 const SUB_TOPICS = [
@@ -54,8 +56,10 @@ const io     = new Server(server);
 app.use(express.static(path.join(__dirname, 'public')));
 
 // ----- MQTT client -----
-console.log(`[MQTT] connecting to ${MQTT_URL} ...`);
+console.log(`[MQTT] connecting to ${MQTT_URL} as ${MQTT_USER} ...`);
 const mqttClient = mqtt.connect(MQTT_URL, {
+  username: MQTT_USER,
+  password: MQTT_PASS,
   reconnectPeriod: 2000,
   clientId: 'htpt-monitor-server-' + Math.random().toString(16).slice(2, 8)
 });
