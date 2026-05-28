@@ -31,9 +31,9 @@
 #include <ArduinoJson.h>
 
 // ===================== CẤU HÌNH (SỬA TRƯỚC KHI NẠP) =====================
-const char*    WIFI_SSID   = "YOUR_WIFI_SSID";
-const char*    WIFI_PASS   = "YOUR_WIFI_PASSWORD";
-const char*    MQTT_BROKER = "192.168.1.100";   // IP laptop chạy Mosquitto
+const char*    WIFI_SSID   = "iPhone 3";
+const char*    WIFI_PASS   = "22224444";
+const char*    MQTT_BROKER = "172.20.10.3";   // IP laptop chạy Mosquitto
 const uint16_t MQTT_PORT   = 1883;
 const char*    CLIENT_ID   = "ESP32_B_Receiver";
 const char*    MQTT_USER   = "esp32_b";          // khớp với .env trong docker/
@@ -49,6 +49,11 @@ const char*    MQTT_PASS   = "esp32b_pass_2026";
 float    TEMP_THRESHOLD     = 30.0;   // có thể điều khiển qua Node-RED
 float    ack_drop_probability = 0.0;  // giả lập mất ACK
 #define  REORDER_BUFFER_SIZE 16
+
+// Cơ chế fast-forward: nếu seq nhận được vượt expected_seq quá ngưỡng này
+// (ví dụ A đã chạy lâu, B vừa reboot), B sẽ tự đồng bộ lên seq nhận được
+// thay vì kẹt vô hạn trong reorder buffer.
+#define RESYNC_GAP_THRESHOLD 32
 
 const unsigned long STATS_PUBLISH_MS = 1000;
 
@@ -251,7 +256,26 @@ void handle_data_message(const byte* payload, unsigned int length) {
     return;
   }
 
-  // 5) seq > expected → OUT_OF_ORDER, lưu lại chờ seq trước đến
+  // 5a) Fast-forward: seq vượt expected quá xa (B vừa reboot hoặc gap lớn vĩnh viễn)
+  //     → tự đồng bộ expected_seq lên gần seq này, xử lý seq ngay, tránh kẹt vô hạn
+  if (seq > expected_seq + RESYNC_GAP_THRESHOLD) {
+    Serial.printf("[RESYNC] seq=%u vượt expected=%u quá %d → fast-forward\n",
+                  seq, expected_seq, RESYNC_GAP_THRESHOLD);
+    // Xoá reorder buffer cũ (các seq < seq mới không còn ý nghĩa)
+    for (int i = 0; i < REORDER_BUFFER_SIZE; i++) reorder[i].active = false;
+    expected_seq = seq;          // nhảy thẳng tới seq này
+    apply_actuator(temp, humid); // xử lý luôn message này
+    stat_ok++;
+    blink(led_green);
+    send_ack(seq, "OK");
+    expected_seq++;
+    mon["status"] = "RESYNC";
+    char b[128]; size_t n = serializeJson(mon, b);
+    mqtt.publish(T_MON_RECEIVED, (const uint8_t*)b, n, false);
+    return;
+  }
+
+  // 5b) seq > expected (nhưng trong khoảng) → OUT_OF_ORDER, lưu lại chờ seq trước đến
   Serial.printf("[OUT_OF_ORDER] seq=%u (expected=%u) → lưu reorder buffer\n",
                 seq, expected_seq);
   stat_out_of_order++;

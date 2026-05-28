@@ -32,9 +32,9 @@
 #include <ArduinoJson.h>
 
 // ===================== CẤU HÌNH (SỬA TRƯỚC KHI NẠP) =====================
-const char*    WIFI_SSID   = "YOUR_WIFI_SSID";
-const char*    WIFI_PASS   = "YOUR_WIFI_PASSWORD";
-const char*    MQTT_BROKER = "192.168.1.100";   // IP laptop chạy Mosquitto
+const char*    WIFI_SSID   = "iPhone 3";
+const char*    WIFI_PASS   = "22224444";
+const char*    MQTT_BROKER = "172.20.10.3";   // IP laptop chạy Mosquitto
 const uint16_t MQTT_PORT   = 1883;
 const char*    CLIENT_ID   = "ESP32_A_Sender";
 const char*    MQTT_USER   = "esp32_a";          // khớp với .env trong docker/

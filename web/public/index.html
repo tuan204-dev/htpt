@@ -275,11 +275,15 @@ function handleMessage(topic, m) {
   switch (topic) {
     case 'monitor/stats/A':   updateStatsA(m); break;
     case 'monitor/stats/B':   updateStatsB(m); break;
-    case 'monitor/processed': updateSensor(m); break;
+    case 'monitor/processed': updateSensor(m); break;   // gauges + LED_MAIN
     case 'monitor/sent':
       addLog('sent', `SENT seq=${m.seq} temp=${m.temp}`);
       blink('led-a-green', 200);
       pushChart('sent', m.seq);
+      updateGauges(m);                                  // hiển thị gauge ngay khi A đọc xong
+      break;
+    case 'sensor/data':                                 // backup: data thô từ A (kể cả retry)
+      updateGauges(m);
       break;
     case 'monitor/retry':
       addLog('retry', `RETRY seq=${m.seq} attempt=${m.retry}`);
@@ -302,13 +306,14 @@ function handleMessage(topic, m) {
 
 function handleReceived(m) {
   const cls = ({
-    OK: 'ok', DUPLICATE_OLD: 'duplicate', DUPLICATE_BUF: 'duplicate',
+    OK: 'ok', RESYNC: 'ok',
+    DUPLICATE_OLD: 'duplicate', DUPLICATE_BUF: 'duplicate',
     OUT_OF_ORDER: 'ooo', CORRUPT: 'corrupt'
   })[m.status] || 'ok';
   addLog(cls, `RECV seq=${m.seq} expected=${m.expected} status=${m.status}`);
   pushChart(m.status, m.seq);
 
-  if (m.status === 'OK') blink('led-b-green', 200);
+  if (m.status === 'OK' || m.status === 'RESYNC') blink('led-b-green', 200);
   else if (m.status === 'DUPLICATE_OLD' || m.status === 'DUPLICATE_BUF') blink('led-b-yellow', 300);
   else if (m.status === 'OUT_OF_ORDER') blink('led-b-red', 300);
   else if (m.status === 'CORRUPT') blink('led-b-red', 500);
@@ -342,11 +347,21 @@ function updateStatsB(s) {
   setText('expected-seq',s.expected_seq);
 }
 
+// Cập nhật gauge nhiệt độ + độ ẩm từ payload (có thể đến từ monitor/sent, sensor/data, monitor/processed)
+function updateGauges(m) {
+  if (typeof m.temp === 'number' && !isNaN(m.temp)) {
+    setText('temp-val', m.temp.toFixed(1));
+    updateGauge(gaugeTemp, m.temp);
+  }
+  if (typeof m.humid === 'number' && !isNaN(m.humid)) {
+    setText('humid-val', m.humid.toFixed(1));
+    updateGauge(gaugeHumid, m.humid);
+  }
+}
+
+// Khi B đã xử lý xong message: update gauges + cập nhật LED_MAIN theo quyết định của B
 function updateSensor(m) {
-  setText('temp-val',  Number(m.temp).toFixed(1));
-  setText('humid-val', Number(m.humid).toFixed(1));
-  updateGauge(gaugeTemp,  m.temp);
-  updateGauge(gaugeHumid, m.humid);
+  updateGauges(m);
   if (m.led_main === 'ON') document.getElementById('led-b-main').classList.add('on');
   else                     document.getElementById('led-b-main').classList.remove('on');
 }
